@@ -1,0 +1,136 @@
+import urllib.request #ネットからファイルをダウンロードする標準ライブラリ
+import os
+
+#t-shirt
+tshirt_url = "https://storage.googleapis.com/quickdraw_dataset/full/raw/t-shirt.ndjson"
+tshirt_path = "/content/t-shirt.ndjson"
+urllib.request.urlretrieve(tshirt_url, tshirt_path)
+print("t-shirt.ndjson ダウンロード完了:", tshirt_path)
+print("ファイルが存在するか:", os.path.exists(tshirt_path))
+
+#pants
+pants_url = "https://storage.googleapis.com/quickdraw_dataset/full/raw/pants.ndjson"
+pants_path = "/content/pants.ndjson"
+urllib.request.urlretrieve(pants_url, pants_path)
+print("pants.ndjson ダウンロード完了:", pants_path)
+print("ファイルが存在するか:", os.path.exists(pants_path))
+
+#sweater
+sweater_url = "https://storage.googleapis.com/quickdraw_dataset/full/raw/sweater.ndjson"
+sweater_path = "/content/sweater.ndjson"
+urllib.request.urlretrieve(sweater_url, sweater_path)
+print("sweater.ndjson ダウンロード完了:", sweater_path)
+print("ファイルが存在するか:", os.path.exists(sweater_path))
+
+#jacket
+jacket_url = "https://storage.googleapis.com/quickdraw_dataset/full/raw/jacket.ndjson"
+jacket_path = "/content/jacket.ndjson"
+urllib.request.urlretrieve(jacket_url, jacket_path) #urlからファイルをローカルに保存
+print("jacket.ndjson ダウンロード完了:", jacket_path)
+print("ファイルが存在するか:", os.path.exists(jacket_path))#保存できたか確認
+
+#socks
+sock_url = "https://storage.googleapis.com/quickdraw_dataset/full/raw/sock.ndjson"
+sock_path = "/content/sock.ndjson"
+urllib.request.urlretrieve(sock_url, sock_path)
+print("sock.ndjson ダウンロード完了:", sock_path)
+print("ファイルが存在するか:", os.path.exists(sock_path))
+
+
+import json #ndjsonを辞書へ変換するモジュール
+import numpy as np
+import tensorflow as tf
+from sklearn.model_selection import train_test_split #学習・評価用データの分割ユーティリティを読み込み
+
+#np.random.seed(42)
+#tf.random.set_seed(42)
+
+#SCALE = 255.0 #正規化用
+CLASS_NAMES = ["t-shirt","pants","sweater","jacket","sock"]
+label_map = {c:i for i,c in enumerate(CLASS_NAMES)} #各クラスをid付け
+
+MIN_POINTS = 50
+
+#ストローク形式の描画データ(strokes)を系列データ(seq)に変換
+def convert_strokes_to_seq(strokes):
+    seq = []
+    prev_x, prev_y = 0, 0 #seq(前の点の座標)初期化
+    for stroke in strokes: #[[x1, x2...], [y1, y2...]]の形
+        x_list, y_list = stroke[:2] #strokeを[x, y]の2つに分ける
+
+        for i in range(len(x_list)):
+            x, y = x_list[i], y_list[i] #現在の(x,y)座標を取得
+            dx, dy = x - prev_x, y - prev_y #前の点との座標差分(Δx,Δy)
+
+             #ペンの状態をone-hotで、
+            pen = [1, 0, 0] #ペンを動かしている
+            if i == len(x_list) - 1: #最後の点か判定(最終点->ペンを離す状態に切り替え)
+                pen = [0, 1, 0]  #ペンを離す
+            seq.append([dx, dy] + pen) #差分とペン状態をまとめて1つのベクトルとしてseqに追加
+            prev_x, prev_y = x, y #今の点を次の点に設定
+
+    seq.append([0, 0, 0, 0, 1])  #終了を示すトークン
+    return seq #完成した系列を返す(1つの絵->1つのseqとなる)
+
+# ndjsonを読み込む
+def load_drawings(filepath, label=0, limit=2000):
+    data = []
+    with open(filepath, "r") as f:
+        for i, line in enumerate(f):
+            if i >= limit:
+                break
+            sample = json.loads(line) #各行(json)を辞書に変換
+            full_seq = convert_strokes_to_seq(sample["drawing"]) #drawingキー(ストローク配列)を系列データに変換
+            if len(full_seq) < MIN_POINTS:
+                continue
+
+            # 途中スケッチを生成
+            for rate in [0.2, 0.4, 0.6, 0.8, 1.0]:
+                num_points = int(len(full_seq) * rate)
+                if num_points < 1: continue #0になる場合を除外
+
+                partial_seq = full_seq[:num_points] #先頭からnumpointsまでをとる
+                data.append((partial_seq, label))
+    return data
+
+# ファイル読み込み
+tshirt_data = load_drawings("/content/t-shirt.ndjson", label=0, limit=2000)
+pants_data = load_drawings("/content/pants.ndjson", label=1, limit=2000)
+sweater_data = load_drawings("/content/sweater.ndjson", label=2, limit=2000)
+jacket_data = load_drawings("/content/jacket.ndjson", label=3, limit=2000)
+sock_data = load_drawings("/content/sock.ndjson", label=4, limit=2000)
+
+all_data = tshirt_data + pants_data + sweater_data + jacket_data + sock_data
+
+# パディングと分割
+MAXLEN = 200
+#１系列の最長を200(それ以上は切る、足りない部分は0パディング)
+X = [seq[:MAXLEN] + [[0]*5]*(MAXLEN-len(seq)) if len(seq)<MAXLEN else seq[:MAXLEN] for seq, _ in all_data]
+y = [label for _, label in all_data] #各サンプルのラベルだけを抽出してリスト
+
+# numpy配列に変換
+X = np.array(X, dtype=np.float32)# (N, 200, 5)
+y = np.array(y, dtype=np.int32)# (N,)
+
+# 8:2に分割)(学習用、テスト用データ)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+# モデルの構築
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(MAXLEN, 5)),#200×5
+    tf.keras.layers.LSTM(64),
+    tf.keras.layers.Dense(32, activation='relu'),
+    tf.keras.layers.Dense(5, activation='softmax')
+])
+
+model.compile(
+    optimizer="adam",
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+# モデル学習を開始
+model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=10)
+
+#学習したモデルを保存
+model.save("/content/qd_apparel_model.keras")
