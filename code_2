@@ -1,0 +1,124 @@
+from IPython.display import display, HTML
+
+canvas_code = """
+<style>
+  #output{
+    font-size: 48px;
+    font-weight: 800;
+    margin: 12px 0 0;
+    letter-spacing: .5px;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+</style>
+
+<canvas id="canvas" width="500" height="500" style="border:1px solid black;"></canvas><br>
+<button onclick="clearCanvas()">クリア</button>
+<p id="output"></p>
+
+<script>
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
+let drawing = false;
+let strokes = [];
+let currentStroke = [];
+
+canvas.addEventListener("mousedown", (e) => {
+  drawing = true;
+  currentStroke = [];
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  currentStroke.push([x, y]);
+});
+
+canvas.addEventListener("mouseup", () => {
+  drawing = false;
+  if (currentStroke.length > 0) {
+    strokes.push(currentStroke);
+    currentStroke = [];
+  }
+
+
+  google.colab.kernel.invokeFunction('classify_strokes', [strokes], {})
+    .then((result) => {
+      const text = (result && result.data && result.data['text/plain']) || '';
+      document.getElementById("output").innerText = text || '（結果なし）';
+    });
+});
+
+canvas.addEventListener("mousemove", draw);
+
+function draw(e) {
+  if (!drawing) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "black";
+
+  ctx.lineTo(x, y);
+  ctx.stroke();
+
+  currentStroke.push([x, y]);
+}
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  strokes = [];
+  currentStroke = [];
+  document.getElementById("output").innerText = "";
+}
+</script>
+"""
+display(HTML(canvas_code))
+
+
+import numpy as np
+#JavaScriptからPython関数を呼び出すモジュール
+from google.colab import output
+import tensorflow as tf
+model = tf.keras.models.load_model("/content/qd_apparel_model.keras")
+print("学習済みモデルをロードしました。")
+
+class_names = ["t-shirt","pants","sweater","jacket","sock"]
+
+#JSからくる系列をLSTM用に変換
+def preprocess_strokes(raw_strokes, maxlen=200):
+    seq = []
+    prev_x, prev_y = 0, 0
+    for stroke in raw_strokes:
+        for i, point in enumerate(stroke):
+            x, y = point
+            dx, dy = x - prev_x, y - prev_y
+            pen = [1, 0, 0]
+            if i == len(stroke) - 1:
+                pen = [0, 1, 0]
+            seq.append([dx, dy] + pen)
+            prev_x, prev_y = x, y
+    seq.append([0, 0, 0, 0, 1])
+
+    #パディングと分割
+    if len(seq) < maxlen:
+        seq += [[0]*5]*(maxlen - len(seq))
+    else:
+        seq = seq[:maxlen]
+    return np.expand_dims(np.array(seq, dtype=np.float32), axis=0)
+
+#キャンバスからきたストローク系列を受け取り、分類
+def classify_strokes(js_strokes):
+    if not js_strokes or not js_strokes[0]:
+        return "スケッチしてください"
+
+    x = preprocess_strokes(js_strokes)#ストロークをLSTM入力形式に変換
+    pred = model.predict(x, verbose=0)#予測
+    label_id = int(np.argmax(pred[0]))#最大値のインデックス(0か1)を取得
+    confidence = float(np.max(pred[0]))
+    label = class_names[label_id]
+    return f"判定: {label}    信頼度: {confidence:.1%}"
+
+#JSからの呼び出し
+output.register_callback('classify_strokes', classify_strokes)
