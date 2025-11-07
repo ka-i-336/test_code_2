@@ -1,0 +1,26 @@
+from google.colab import files
+from zipfile import ZipFile
+import os, glob
+
+# ファイル選択（例：frea.zip, jogger.zip, ...）
+print("アップロードするZIPファイルを選択してください（複数可）")
+uploaded = files.upload()
+
+root = "/content/pants_data"
+os.makedirs(root, exist_ok=True)
+
+# ZIPを解凍
+for fname in uploaded.keys():
+    if fname.endswith(".zip"):
+        sub = os.path.splitext(fname)[0]
+        dest = os.path.join(root, sub)
+        os.makedirs(dest, exist_ok=True)
+        with ZipFile(fname, "r") as zip_ref:
+            zip_ref.extractall(dest)
+        print(f"✓ {fname} → {dest}")
+
+# 各フォルダの ndjson ファイル数を数える
+print("\n--- クラスごとの ndjson ファイル数 ---")
+for cls_dir in sorted(glob.glob(f"{root}/*")):
+    count = len(glob.glob(f"{cls_dir}/**/*.ndjson", recursive=True))
+    print(f"{os.path.basename(cls_dir)}: {count} files")
