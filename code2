@@ -1,8 +1,9 @@
+import os
 import json
 import numpy as np
 import tensorflow as tf
-from keras.layers import Bidirectional 
-from sklearn.model_selection import train_test_split #学習・評価用データの分割ユーティリティを読み込み
+from keras.layers import Bidirectional
+from sklearn.model_selection import train_test_split 
 
 #np.random.seed(42)
 #tf.random.set_seed(42)
@@ -17,106 +18,108 @@ MIN_POINTS = 50
 
 #左上詰め、スケーリング
 def simplified(strokes):
-  x_list = []
-  y_list = []
-  for stroke in strokes:
-    x_list += stroke[0]
-    y_list += stroke[1]
-
-  min_x, min_y = min(x_list), min(y_list)
-  max_x, max_y = max(x_list), max(y_list)
-  w = max_x - min_x
-  h = max_y - min_y
-  s = max(w,h)
-  scale = 255.0 / s
-
-  out = []
-  for stroke in strokes:
     x_list = []
     y_list = []
+    for stroke in strokes:
+      x_list += stroke[0]
+      y_list += stroke[1]
 
-    for i in range(len(stroke[0])):
-        x = (stroke[0][i] - min_x) * scale
-        y = (stroke[1][i] - min_y) * scale
-        x_list.append(x)
-        y_list.append(y)
-    out.append([x_list, y_list])
-  return out
+    min_x, min_y = min(x_list), min(y_list)
+    max_x, max_y = max(x_list), max(y_list)
+    w = max_x - min_x
+    h = max_y - min_y
+    s = max(w,h)
+    scale = 255.0 / s
+
+    out = []#それぞれのストロークを順番に処理
+    for stroke in strokes:
+      x_list = []
+      y_list = []
+
+      #座標を左上に寄せて、255の範囲にそろえる
+      for i in range(len(stroke[0])):
+          x = (stroke[0][i] - min_x) * scale
+          y = (stroke[1][i] - min_y) * scale
+          x_list.append(x)
+          y_list.append(y)
+      out.append([x_list, y_list])
+    return out
 
 # ストローク形式の描画データ(strokes)を系列データ(seq)に変換
 def convert_strokes_to_seq(strokes):
     seq_5d = []
-    prev_x, prev_y = 0, 0 
-    for stroke in strokes: 
-        x_list, y_list = stroke[0], stroke[1] 
+    prev_x, prev_y = 0, 0
+    for stroke in strokes:
+        x_list, y_list = stroke[0], stroke[1]
 
         for i in range(len(x_list)):
-            x, y = x_list[i], y_list[i] 
-            dx, dy = x - prev_x, y - prev_y 
+            x, y = x_list[i], y_list[i]
+            dx, dy = x - prev_x, y - prev_y
 
             pen = [1, 0, 0]
-            if i == len(x_list) - 1: 
-                pen = [0, 1, 0] 
-            seq_5d.append([dx, dy] + pen) 
-            prev_x, prev_y = x, y 
+            if i == len(x_list) - 1:
+                pen = [0, 1, 0]
+            seq_5d.append([dx, dy] + pen)
+            prev_x, prev_y = x, y
 
-    seq_5d.append([0, 0, 0, 0, 1]) 
+    seq_5d.append([0, 0, 0, 0, 1])
     return seq_5d
 
 def make_partials(seq_5d,label,rates=(0.2, 0.4, 0.6, 0.8, 1.0)):
-  out = []
-  n = len(seq_5d)
-  if n < MIN_POINTS:
+    out = []
+    n = len(seq_5d)
+    if n < MIN_POINTS:
+      return out
+    for r in rates:
+      k = int(n * r)
+      if k < 1:
+        continue
+      out.append((seq_5d[:k], label))
     return out
-  for r in rates:
-    k = int(n * r)
-    if k < 1:
-      continue
-    out.append((seq_5d[:k], label))
-  return out
 
-def points_to_xy(strokes_pts):
+def points_to_xy(strokes_points):
     xy_strokes = []
-    for stroke in strokes_pts:
+    for stroke in strokes_points:
         if not stroke:
             continue
 
         x_list, y_list = [], []
-
+        # 各ストローク内の点を一つずつ
         for point in stroke:
             x = float(point[0])
             y = float(point[1])
             x_list.append(x)
             y_list.append(y)
+        # xとyのリストを1つのストロークとしてまとめる
         xy_strokes.append([x_list, y_list])
     return xy_strokes
 
 # ndjsonを読み込む
 def load_drawings(folder_path, label=0, limit=2000):
     data = []
-    files = sorted(glob.glob(f"{folder_path}/*.ndjson"))  
+    files = sorted(glob.glob(f"{folder_path}/*.ndjson"))  #フォルダ内のndjsonファイルをとる
 
     for file in files:
         with open(file, "r") as f:
             for i, line in enumerate(f):
                 if i >= limit:
                     break
-                sample = json.loads(line)  
-                full_seq = sample["drawing"]
-                strokes = points_to_xy(full_seq)
-                sim = simplified(strokes)
-                full_seq = convert_strokes_to_seq(sim)
-                if len(full_seq) < MIN_POINTS:
+                sample = json.loads(line)  # 各行(json)を辞書に変換
+                raw_strokes = sample["drawing"]
+                xy = points_to_xy(raw_strokes)
+                sim = simplified(xy)
+                seq_5d = convert_strokes_to_seq(sim)
+                if len(seq_5d) < MIN_POINTS:
                     continue
-                data.extend(make_partials(full_seq, label))
+                data.extend(make_partials(seq_5d, label))
     return data
 
 # ファイル読み込み
-straight_data = load_drawings("/content/pants_data/xy_straight/xy_straight", label=0)
-skinny_data = load_drawings("/content/pants_data/xy_skinny/xy_skinny", label=1)
-wide_data = load_drawings("/content/pants_data/xy_wide/xy_wide", label=2)
-frea_data = load_drawings("/content/pants_data/xy_frea/xy_frea", label=3)
-jogger_data = load_drawings("/content/pants_data/xy_jogger/xy_jogger", label=4)
+straight_data = load_drawings("/content/pants_data/xy_STRAIGHT/n_STRAIGHT", label=0)
+skinny_data = load_drawings("/content/pants_data/xy_SKINNY/n_SKINNY", label=1)
+wide_data = load_drawings("/content/pants_data/xy_WIDE/n_WIDE", label=2)
+frea_data = load_drawings("/content/pants_data/xy_FREA/n_FREA", label=3)
+jogger_data = load_drawings("/content/pants_data/xy_JOGGER/n_JOGGER", label=4)
 
 all_data = straight_data + skinny_data + wide_data + frea_data + jogger_data
 
@@ -134,8 +137,8 @@ for seq_5d,label in all_data:
   Y.append(label)
 
 # numpy配列に変換
-X = np.array(X, dtype=np.float32)# (N, 400, 5)
-Y = np.array(Y, dtype=np.int32)# (N,)
+X = np.array(X, dtype=np.float32)# (N, 500, 5)
+Y = np.array(Y, dtype=np.int32)
 
 # 8:2に分割)(学習用、テスト用データ)
 X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, stratify=Y, random_state=42)
@@ -162,7 +165,7 @@ model.compile(
 history = model.fit(
     X_train, Y_train,
     validation_data=(X_test, Y_test),
-    epochs=10
+    epochs=1
     )
 
 # 評価
@@ -178,33 +181,43 @@ with open("result_log.txt", "w") as f:
 
 #学習したモデルを保存
 model.save("/content/qd_apparel_model.keras")
-    tf.keras.layers.Input(shape=(MAXLEN, 5)),#200×5
-    tf.keras.layers.LSTM(128, return_sequences=True), 
-    tf.keras.layers.Dropout(0.3),  
-    tf.keras.layers.LSTM(128),
-    tf.keras.layers.Dropout(0.3),
-    tf.keras.layers.Dense(32, activation='relu'),
-    tf.keras.layers.Dense(5, activation='softmax')
-])
-
-model.compile(
-    optimizer="adam",
-    loss="sparse_categorical_crossentropy",
-    metrics=["accuracy"]
-)
-
-# モデル学習を開始
-model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=50)
-
-# 評価
-loss, acc = model.evaluate(X_test, y_test)
-print("Accuracy =", acc)
 
 
-# 結果をファイルに保存
-with open("result_log.txt", "w") as f:
-    f.write(f"Loss: {loss:.4f}\n")
-    f.write(f"Accuracy: {acc:.4f}\n")
+import matplotlib.pyplot as plt
+import numpy as np
 
-#学習したモデルを保存
-model.save("/content/qd_apparel_model.keras")
+hist_dict = history.history
+
+epochs = range(1, len(hist_dict['loss']) + 1)
+
+#Lossグラフ 
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+
+# 訓練データと検証データの損失をプロット
+plt.plot(epochs, hist_dict['loss'], 'b', label='Training Loss')
+plt.plot(epochs, hist_dict['val_loss'], 'r', label='Validation Loss')
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+
+
+# Accuracyグラフ
+plt.subplot(1, 2, 2) 
+
+# 訓練データと検証データの精度をプロット
+plt.plot(epochs, hist_dict['accuracy'], 'b', label='Training Accuracy')
+plt.plot(epochs, hist_dict['val_accuracy'], 'r', label='Validation Accuracy')
+plt.title('Training and Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout() 
+
+plt.show()
+
+print("グラフの生成を完了しました。")
