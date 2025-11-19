@@ -93,12 +93,13 @@ def points_to_xy(strokes_pts):
             continue
 
         x_list, y_list = [], []
+        # 各ストローク内の点を一つずつ
         for point in stroke:
             x = float(point[0])
             y = float(point[1])
             x_list.append(x)
             y_list.append(y)
-
+        # xとyのリストを1つのストロークとしてまとめる
         xy_strokes.append([x_list, y_list])
     return xy_strokes
 
@@ -116,11 +117,12 @@ def simplified(strokes):
   s = max(w,h)
   scale = 255.0 / s
 
-  out = []
+  out = []# それぞれのストロークを順番に処理
   for stroke in strokes:
     x_list = []
     y_list = []
 
+    # 座標を左上に寄せて、255の範囲にそろえる
     for i in range(len(stroke[0])):
         x = (stroke[0][i] - min_x) * scale
         y = (stroke[1][i] - min_y) * scale
@@ -132,22 +134,23 @@ def simplified(strokes):
 # ストローク形式の描画データ(strokes)を系列データ(seq)に変換
 def convert_strokes_to_seq(strokes):
     seq_5d = []
-    prev_x, prev_y = 0, 0 
-    for stroke in strokes: 
-        x_list, y_list = stroke[0], stroke[1] 
+    prev_x, prev_y = 0, 0 #seq(前の点の座標)初期化
+    for stroke in strokes: #[[x1, x2...], [y1, y2...]]の形
+        x_list, y_list = stroke[0], stroke[1] #strokeを[x, y]の2つに分ける
 
         for i in range(len(x_list)):
-            x, y = x_list[i], y_list[i] 
-            dx, dy = x - prev_x, y - prev_y 
+            x, y = x_list[i], y_list[i] #現在の(x,y)座標を取得
+            dx, dy = x - prev_x, y - prev_y #前の点との座標差分(Δx,Δy)
 
-            pen = [1, 0, 0] 
-            if i == len(x_list) - 1: 
-                pen = [0, 1, 0]  
-            seq_5d.append([dx, dy] + pen) 
-            prev_x, prev_y = x, y 
+             #ペンの状態をone-hotで、
+            pen = [1, 0, 0] #ペンを動かしている
+            if i == len(x_list) - 1: #最後の点か判定(最終点->ペンを離す状態に切り替え)
+                pen = [0, 1, 0]  #ペンを離す
+            seq_5d.append([dx, dy] + pen) #差分とペン状態をまとめて1つのベクトルとしてseqに追加
+            prev_x, prev_y = x, y #今の点を次の点に設定
 
-    seq_5d.append([0, 0, 0, 0, 1])  
-    return seq_5d 
+    seq_5d.append([0, 0, 0, 0, 1])  #終了を示すトークン
+    return seq_5d #完成した系列を返
 
 def preprocess_strokes(raw_strokes, maxlen=MAXLEN):
     xy = points_to_xy(raw_strokes)
@@ -170,10 +173,10 @@ def classify_strokes(js_strokes):
         return "スケッチしてください"
 
     x = preprocess_strokes(js_strokes, maxlen=MAXLEN)
-    pred = model.predict(x, verbose=0)
+    pred = model.predict(x, verbose=2)
     label_id = int(np.argmax(pred[0]))
     confidence = float(np.max(pred[0]))
     label = class_names[label_id]
-    return f"判定: {label}    信頼度: {confidence:.1%}"
+    return f"判定: {label}    精度: {confidence:.1%}"
 
 output.register_callback('classify_strokes', classify_strokes)
