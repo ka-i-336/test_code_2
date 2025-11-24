@@ -159,9 +159,9 @@ def preprocess_strokes(raw_strokes, maxlen=MAXLEN):
 
     #パディング
     if len(seq_5d) < MAXLEN:
-        seq_5d += [[0.0]*5]*(MAXLEN - len(seq_5d))
-      else:
-        seq_5d = seq_5d[:MAXLEN]
+      seq_5d += [[0.0]*5]*(MAXLEN - len(seq_5d))
+    else:
+      seq_5d = seq_5d[:MAXLEN]
 
     x = np.array(seq_5d, dtype=np.float32)
     x = np.expand_dims(x, axis=0)
