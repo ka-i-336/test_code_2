@@ -104,23 +104,23 @@ def points_to_xy(strokes_pts):
     return xy_strokes
 
 def simplified(strokes):
-  x_list = []
-  y_list = []
-  for stroke in strokes:
-    x_list += stroke[0]
-    y_list += stroke[1]
+    x_list = []
+    y_list = []
+    for stroke in strokes:
+      x_list += stroke[0]
+      y_list += stroke[1]
 
-  min_x, min_y = min(x_list), min(y_list)
-  max_x, max_y = max(x_list), max(y_list)
-  w = max_x - min_x
-  h = max_y - min_y
-  s = max(w,h)
-  scale = 255.0 / s
+    min_x, min_y = min(x_list), min(y_list)
+    max_x, max_y = max(x_list), max(y_list)
+    w = max_x - min_x
+    h = max_y - min_y
+    s = max(w,h)
+    scale = 255.0 / s
 
   out = []# それぞれのストロークを順番に処理
   for stroke in strokes:
-    x_list = []
-    y_list = []
+      x_list = []
+      y_list = []
 
     # 座標を左上に寄せて、255の範囲にそろえる
     for i in range(len(stroke[0])):
@@ -159,9 +159,9 @@ def preprocess_strokes(raw_strokes, maxlen=MAXLEN):
 
     #パディング
     if len(seq_5d) < MAXLEN:
-      seq_5d += [[0.0]*5]*(MAXLEN - len(seq_5d))
-    else:
-      seq_5d = seq_5d[:MAXLEN]
+        seq_5d += [[0.0]*5]*(MAXLEN - len(seq_5d))
+      else:
+        seq_5d = seq_5d[:MAXLEN]
 
     x = np.array(seq_5d, dtype=np.float32)
     x = np.expand_dims(x, axis=0)
