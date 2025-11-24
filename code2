@@ -107,8 +107,8 @@ def load_drawings(folder_path, label=0, limit=2000):
                 sample = json.loads(line)  # 各行(json)を辞書に変換
                 raw_strokes = sample["drawing"]
                 xy = points_to_xy(raw_strokes)
-                sim = simplified(xy)
-                seq_5d = convert_strokes_to_seq(sim)
+                xy_sim = simplified(xy)
+                seq_5d = convert_strokes_to_seq(xy_sim)
                 if len(seq_5d) < MIN_POINTS:
                     continue
                 data.extend(make_partials(seq_5d, label))
