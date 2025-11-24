@@ -128,13 +128,13 @@ MAXLEN = 500
 #それ以上は切る、足りない部分は0パディング
 X, Y = [], []
 for seq_5d,label in all_data:
-  if len(seq_5d) < MAXLEN:
-    seq_5d += [[0.0]*5]*(MAXLEN - len(seq_5d))
-  else:
-    seq_5d = seq_5d[:MAXLEN]
+    if len(seq_5d) < MAXLEN:
+      seq_5d += [[0.0]*5]*(MAXLEN - len(seq_5d))
+    else:
+      seq_5d = seq_5d[:MAXLEN]
 
-  X.append(seq_5d)
-  Y.append(label)
+    X.append(seq_5d)
+    Y.append(label)
 
 # numpy配列に変換
 X = np.array(X, dtype=np.float32)# (N, 500, 5)
